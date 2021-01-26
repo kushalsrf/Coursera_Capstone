@@ -1,0 +1,1580 @@
+In [4]:
+#Import Beautiful Soup, lxml, requests to scrap data from Toronto Neighborhood in Wikipedia
+#!pip install wikipedia
+import wikipedia as wp
+import numpy as np # library to handle data in a vectorized manner
+
+import pandas as pd # library for data analsysis
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
+import json # library to handle JSON files
+
+#conda install -c conda-forge geopy --yes # uncomment this line if you haven't completed the Foursquare API lab
+from geopy.geocoders import Nominatim # convert an address into latitude and longitude values
+
+import requests # library to handle requests
+from pandas.io.json import json_normalize # tranform JSON file into a pandas dataframe
+
+# Matplotlib and associated plotting modules
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+
+# import k-means from clustering stage
+from sklearn.cluster import KMeans
+
+#!conda install -c conda-forge folium=0.5.0 --yes # uncomment this line if you haven't completed the Foursquare API lab
+import folium # map rendering library
+
+print("Libraries Imported!")
+Requirement already satisfied: wikipedia in /opt/conda/envs/Python36/lib/python3.6/site-packages (1.4.0)
+Requirement already satisfied: requests<3.0.0,>=2.0.0 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from wikipedia) (2.21.0)
+Requirement already satisfied: beautifulsoup4 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from wikipedia) (4.7.1)
+Requirement already satisfied: idna<2.9,>=2.5 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from requests<3.0.0,>=2.0.0->wikipedia) (2.8)
+Requirement already satisfied: urllib3<1.25,>=1.21.1 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from requests<3.0.0,>=2.0.0->wikipedia) (1.24.1)
+Requirement already satisfied: certifi>=2017.4.17 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from requests<3.0.0,>=2.0.0->wikipedia) (2019.6.16)
+Requirement already satisfied: chardet<3.1.0,>=3.0.2 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from requests<3.0.0,>=2.0.0->wikipedia) (3.0.4)
+Requirement already satisfied: soupsieve>=1.2 in /opt/conda/envs/Python36/lib/python3.6/site-packages (from beautifulsoup4->wikipedia) (1.7.1)
+Solving environment: done
+
+## Package Plan ##
+
+  environment location: /opt/conda/envs/Python36
+
+  added / updated specs: 
+    - folium=0.5.0
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    branca-0.3.1               |             py_0          25 KB  conda-forge
+    vincent-0.4.4              |             py_1          28 KB  conda-forge
+    openssl-1.1.1c             |       h516909a_0         2.1 MB  conda-forge
+    folium-0.5.0               |             py_0          45 KB  conda-forge
+    altair-3.2.0               |           py36_0         770 KB  conda-forge
+    certifi-2019.6.16          |           py36_1         149 KB  conda-forge
+    ca-certificates-2019.6.16  |       hecc5488_0         145 KB  conda-forge
+    ------------------------------------------------------------
+                                           Total:         3.3 MB
+
+The following NEW packages will be INSTALLED:
+
+    altair:          3.2.0-py36_0      conda-forge
+    branca:          0.3.1-py_0        conda-forge
+    folium:          0.5.0-py_0        conda-forge
+    vincent:         0.4.4-py_1        conda-forge
+
+The following packages will be UPDATED:
+
+    ca-certificates: 2019.5.15-0                   --> 2019.6.16-hecc5488_0 conda-forge
+    certifi:         2019.6.16-py36_1              --> 2019.6.16-py36_1     conda-forge
+
+The following packages will be DOWNGRADED:
+
+    openssl:         1.1.1c-h7b6447c_1             --> 1.1.1c-h516909a_0    conda-forge
+
+
+Downloading and Extracting Packages
+branca-0.3.1         | 25 KB     | ##################################### | 100% 
+vincent-0.4.4        | 28 KB     | ##################################### | 100% 
+openssl-1.1.1c       | 2.1 MB    | ##################################### | 100% 
+folium-0.5.0         | 45 KB     | ##################################### | 100% 
+altair-3.2.0         | 770 KB    | ##################################### | 100% 
+certifi-2019.6.16    | 149 KB    | ##################################### | 100% 
+ca-certificates-2019 | 145 KB    | ##################################### | 100% 
+Preparing transaction: done
+Verifying transaction: done
+Executing transaction: done
+Libraries Imported!
+1. Obtain Table from Wikipedia
+In [21]:
+#Get the html source
+html = wp.page("List of postal codes of Canada: M").html().encode("UTF-8")
+df = pd.read_html(html)[0]
+
+#Delete rows where Borough is 'Not assigned'
+df = df[df.Borough!= "Not assigned"]
+
+#Combine all neighbourhoods where postcode and Borough are the same
+df = df.groupby(['Postcode', 'Borough'])['Neighbourhood'].apply(list).apply(lambda x:', '.join(x)).to_frame().reset_index()
+#if Neighbourhood is not assigned, replace by borough name
+for index, row in df.iterrows():
+    if row['Neighbourhood'] == 'Not assigned':
+        row['Neighbourhood'] = row['Borough']
+
+# define the dataframe columns
+column_names = ['Postcode','Borough', 'Neighborhood'] 
+
+# instantiate the dataframe
+df.columns = column_names
+
+df.head()
+Out[21]:
+Postcode	Borough	Neighborhood
+0	M1B	Scarborough	Rouge, Malvern
+1	M1C	Scarborough	Highland Creek, Rouge Hill, Port Union
+2	M1E	Scarborough	Guildwood, Morningside, West Hill
+3	M1G	Scarborough	Woburn
+4	M1H	Scarborough	Cedarbrae
+2. Add longitude and lattitute to Data Table
+In [22]:
+import pandas as pd
+import io
+import requests
+url="https://cocl.us/Geospatial_data"
+s=requests.get(url).content
+c=pd.read_csv(io.StringIO(s.decode('utf-8')))
+
+dfc = df.join(c.set_index('Postal Code'), on='Postcode')
+dfc.head()
+Out[22]:
+Postcode	Borough	Neighborhood	Latitude	Longitude
+0	M1B	Scarborough	Rouge, Malvern	43.806686	-79.194353
+1	M1C	Scarborough	Highland Creek, Rouge Hill, Port Union	43.784535	-79.160497
+2	M1E	Scarborough	Guildwood, Morningside, West Hill	43.763573	-79.188711
+3	M1G	Scarborough	Woburn	43.770992	-79.216917
+4	M1H	Scarborough	Cedarbrae	43.773136	-79.239476
+3. Explore and cluster the neighborhoods in Toronto
+In [18]:
+address = 'Toronto'
+
+geolocator = Nominatim(user_agent="ny_explorer")
+location = geolocator.geocode(address)
+latitude = location.latitude
+longitude = location.longitude
+print('The geograpical coordinate of Toronto are {}, {}.'.format(latitude, longitude))
+The geograpical coordinate of Toronto are 43.653963, -79.387207.
+In [25]:
+# create map of Toronto using latitude and longitude values
+map_toronto = folium.Map(location=[latitude, longitude], zoom_start=10)
+
+# add markers to map
+for lat, lng, borough, neighborhood in zip(dfc['Latitude'], dfc['Longitude'], dfc['Borough'], dfc['Neighborhood']):
+    label = '{}, {}'.format(neighborhood, borough)
+    label = folium.Popup(label, parse_html=True)
+    folium.CircleMarker(
+        [lat, lng],
+        radius=5,
+        popup=label,
+        color='blue',
+        fill=True,
+        fill_color='#3186cc',
+        fill_opacity=0.7,
+        parse_html=False).add_to(map_toronto)  
+    
+map_toronto
+Out[25]:
+In [28]:
+CLIENT_ID = 'T1LUMOHYFVR21KSZSVKTKIFO1DPONRPOL4PGKBLWSYTPNDNV' # your Foursquare ID
+CLIENT_SECRET = 'JBKZMRN5WS2PBXLZDUMMLCYJIDZELUNSSP3QKM51GSHXXWB0' # your Foursquare Secret
+VERSION = '20180604'
+LIMIT = 100
+print('Your credentails:')
+print('CLIENT_ID: ' + CLIENT_ID)
+print('CLIENT_SECRET:' + CLIENT_SECRET)
+radius = 500
+#print(search_query + ' .... OK!')
+
+url = 'https://api.foursquare.com/v2/venues/search?client_id={}&client_secret={}&ll={},{}&v={}&radius={}&limit={}'.format(CLIENT_ID, CLIENT_SECRET, latitude, longitude, VERSION, radius, LIMIT)
+url
+Your credentails:
+CLIENT_ID: T1LUMOHYFVR21KSZSVKTKIFO1DPONRPOL4PGKBLWSYTPNDNV
+CLIENT_SECRET:JBKZMRN5WS2PBXLZDUMMLCYJIDZELUNSSP3QKM51GSHXXWB0
+Out[28]:
+'https://api.foursquare.com/v2/venues/search?client_id=T1LUMOHYFVR21KSZSVKTKIFO1DPONRPOL4PGKBLWSYTPNDNV&client_secret=JBKZMRN5WS2PBXLZDUMMLCYJIDZELUNSSP3QKM51GSHXXWB0&ll=43.653963,-79.387207&v=20180604&radius=500&limit=100'
+In [29]:
+def get_category_type(row):
+    try:
+        categories_list = row['categories']
+    except:
+        categories_list = row['venue.categories']
+        
+    if len(categories_list) == 0:
+        return None
+    else:
+        return categories_list[0]['name']
+In [34]:
+#Send the GET request and examine the results
+results = requests.get(url).json()
+results
+
+# assign relevant part of JSON to venues
+venues = results['response']['venues']
+
+# tranform venues into a dataframe
+dataframe = json_normalize(venues)
+dataframe.head()
+Out[34]:
+categories	hasPerk	id	location.address	location.cc	location.city	location.country	location.crossStreet	location.distance	location.formattedAddress	location.labeledLatLngs	location.lat	location.lng	location.postalCode	location.state	name	referralId	venuePage.id
+0	[{'id': '4bf58dd8d48988d126941735', 'name': 'G...	False	4f04779a02d5cce0cfc06151	393 University Ave, Suite 1501	CA	Toronto	Canada	in University Centre	14	[393 University Ave, Suite 1501 (in University...	[{'label': 'display', 'lat': 43.65402839343005...	43.654028	-79.387365	NaN	ON	Chinese Visa Application Service Center	v-1566776519	NaN
+1	[{'id': '4bf58dd8d48988d124941735', 'name': 'O...	False	4c45c6c6da2176b09543637a	393 University Ave.	CA	Toronto	Canada	at Armoury St.	36	[393 University Ave. (at Armoury St.), Toronto...	[{'label': 'display', 'lat': 43.65390719043468...	43.653907	-79.386764	M7A 2K1	ON	University Centre	v-1566776519	NaN
+2	[{'id': '4bf58dd8d48988d124941735', 'name': 'O...	False	4c655857f67ec928e7485727	393 University Ave	CA	Toronto	Canada	NaN	79	[393 University Ave, Toronto ON M5G 1E6, Canada]	[{'label': 'display', 'lat': 43.65375248805427...	43.653752	-79.388150	M5G 1E6	ON	393 University Ave	v-1566776519	NaN
+3	[{'id': '4bf58dd8d48988d1a3941735', 'name': 'C...	False	4be18ce28dd062b548533e3c	89 Chestnut St.	CA	Toronto	Canada	at Armoury St.	155	[89 Chestnut St. (at Armoury St.), Toronto ON ...	[{'label': 'display', 'lat': 43.65415952834927...	43.654160	-79.385291	M5G 1R1	ON	89 Chestnut Residence	v-1566776519	NaN
+4	[{'id': '4bf58dd8d48988d1cb941735', 'name': 'F...	False	5b745d96de3bbf003938d3f6	NaN	CA	Toronto	Canada	NaN	3	[Toronto ON M5G, Canada]	[{'label': 'display', 'lat': 43.65392978524921...	43.653930	-79.387204	M5G	ON	Nobs'	v-1566776519	NaN
+In [36]:
+# keep only columns that include venue name, and anything that is associated with location
+filtered_columns = ['name', 'categories'] + [col for col in dataframe.columns if col.startswith('location.')] + ['id']
+dataframe_filtered = dataframe.loc[:, filtered_columns]
+
+# function that extracts the category of the venue
+def get_category_type(row):
+    try:
+        categories_list = row['categories']
+    except:
+        categories_list = row['venue.categories']
+        
+    if len(categories_list) == 0:
+        return None
+    else:
+        return categories_list[0]['name']
+
+# filter the category for each row
+dataframe_filtered['categories'] = dataframe_filtered.apply(get_category_type, axis=1)
+
+# clean column names by keeping only last term
+dataframe_filtered.columns = [column.split('.')[-1] for column in dataframe_filtered.columns]
+
+dataframe_filtered.head()
+Out[36]:
+name	categories	address	cc	city	country	crossStreet	distance	formattedAddress	labeledLatLngs	lat	lng	postalCode	state	id
+0	Chinese Visa Application Service Center	Government Building	393 University Ave, Suite 1501	CA	Toronto	Canada	in University Centre	14	[393 University Ave, Suite 1501 (in University...	[{'label': 'display', 'lat': 43.65402839343005...	43.654028	-79.387365	NaN	ON	4f04779a02d5cce0cfc06151
+1	University Centre	Office	393 University Ave.	CA	Toronto	Canada	at Armoury St.	36	[393 University Ave. (at Armoury St.), Toronto...	[{'label': 'display', 'lat': 43.65390719043468...	43.653907	-79.386764	M7A 2K1	ON	4c45c6c6da2176b09543637a
+2	393 University Ave	Office	393 University Ave	CA	Toronto	Canada	NaN	79	[393 University Ave, Toronto ON M5G 1E6, Canada]	[{'label': 'display', 'lat': 43.65375248805427...	43.653752	-79.388150	M5G 1E6	ON	4c655857f67ec928e7485727
+3	89 Chestnut Residence	College Residence Hall	89 Chestnut St.	CA	Toronto	Canada	at Armoury St.	155	[89 Chestnut St. (at Armoury St.), Toronto ON ...	[{'label': 'display', 'lat': 43.65415952834927...	43.654160	-79.385291	M5G 1R1	ON	4be18ce28dd062b548533e3c
+4	Nobs'	Food Truck	NaN	CA	Toronto	Canada	NaN	3	[Toronto ON M5G, Canada]	[{'label': 'display', 'lat': 43.65392978524921...	43.653930	-79.387204	M5G	ON	5b745d96de3bbf003938d3f6
+In [38]:
+
+100 venues were returned by Foursquare.
+In [39]:
+#Create function to know how many venues there are in Toronto
+
+def getNearbyVenues(names, latitudes, longitudes, radius=500):
+    
+    venues_list=[]
+    for name, lat, lng in zip(names, latitudes, longitudes):
+        print(name)
+            
+        # create the API request URL
+        url = 'https://api.foursquare.com/v2/venues/explore?&client_id={}&client_secret={}&v={}&ll={},{}&radius={}&limit={}'.format(
+            CLIENT_ID, 
+            CLIENT_SECRET, 
+            VERSION, 
+            lat, 
+            lng, 
+            radius, 
+            LIMIT)
+            
+        # make the GET request
+        results = requests.get(url).json()["response"]['groups'][0]['items']
+        
+        # return only relevant information for each nearby venue
+        venues_list.append([(
+            name, 
+            lat, 
+            lng, 
+            v['venue']['name'], 
+            v['venue']['location']['lat'], 
+            v['venue']['location']['lng'],  
+            v['venue']['categories'][0]['name']) for v in results])
+
+    nearby_venues = pd.DataFrame([item for venue_list in venues_list for item in venue_list])
+    nearby_venues.columns = ['Neighborhood', 
+                  'Neighborhood Latitude', 
+                  'Neighborhood Longitude', 
+                  'Venue', 
+                  'Venue Latitude', 
+                  'Venue Longitude', 
+                  'Venue Category']
+    
+    return(nearby_venues)
+In [43]:
+#List of Neighborhood that have venues in Toronto
+toronto_venues = getNearbyVenues(names=dfc['Neighborhood'],
+                                   latitudes=dfc['Latitude'],
+                                   longitudes=dfc['Longitude']
+                                  )
+
+toronto_venues.head()
+Rouge, Malvern
+Highland Creek, Rouge Hill, Port Union
+Guildwood, Morningside, West Hill
+Woburn
+Cedarbrae
+Scarborough Village
+East Birchmount Park, Ionview, Kennedy Park
+Clairlea, Golden Mile, Oakridge
+Cliffcrest, Cliffside, Scarborough Village West
+Birch Cliff, Cliffside West
+Dorset Park, Scarborough Town Centre, Wexford Heights
+Maryvale, Wexford
+Agincourt
+Clarks Corners, Sullivan, Tam O'Shanter
+Agincourt North, L'Amoreaux East, Milliken, Steeles East
+L'Amoreaux West
+Upper Rouge
+Hillcrest Village
+Fairview, Henry Farm, Oriole
+Bayview Village
+Silver Hills, York Mills
+Newtonbrook, Willowdale
+Willowdale South
+York Mills West
+Willowdale West
+Parkwoods
+Don Mills North
+Flemingdon Park, Don Mills South
+Bathurst Manor, Downsview North, Wilson Heights
+Northwood Park, York University
+CFB Toronto, Downsview East
+Downsview West
+Downsview Central
+Downsview Northwest
+Victoria Village
+Woodbine Gardens, Parkview Hill
+Woodbine Heights
+The Beaches
+Leaside
+Thorncliffe Park
+East Toronto
+The Danforth West, Riverdale
+The Beaches West, India Bazaar
+Studio District
+Lawrence Park
+Davisville North
+North Toronto West
+Davisville
+Moore Park, Summerhill East
+Deer Park, Forest Hill SE, Rathnelly, South Hill, Summerhill West
+Rosedale
+Cabbagetown, St. James Town
+Church and Wellesley
+Harbourfront, Regent Park
+Ryerson, Garden District
+St. James Town
+Berczy Park
+Central Bay Street
+Adelaide, King, Richmond
+Harbourfront East, Toronto Islands, Union Station
+Design Exchange, Toronto Dominion Centre
+Commerce Court, Victoria Hotel
+Bedford Park, Lawrence Manor East
+Roselawn
+Forest Hill North, Forest Hill West
+The Annex, North Midtown, Yorkville
+Harbord, University of Toronto
+Chinatown, Grange Park, Kensington Market
+CN Tower, Bathurst Quay, Island airport, Harbourfront West, King and Spadina, Railway Lands, South Niagara
+Stn A PO Boxes 25 The Esplanade
+First Canadian Place, Underground city
+Lawrence Heights, Lawrence Manor
+Glencairn
+Humewood-Cedarvale
+Caledonia-Fairbanks
+Christie
+Dovercourt Village, Dufferin
+Little Portugal, Trinity
+Brockton, Exhibition Place, Parkdale Village
+Downsview, North Park, Upwood Park
+Del Ray, Keelesdale, Mount Dennis, Silverthorn
+The Junction North, Runnymede
+High Park, The Junction South
+Parkdale, Roncesvalles
+Runnymede, Swansea
+Queen's Park
+Canada Post Gateway Processing Centre
+Business Reply Mail Processing Centre 969 Eastern
+Humber Bay Shores, Mimico South, New Toronto
+Alderwood, Long Branch
+The Kingsway, Montgomery Road, Old Mill North
+Humber Bay, King's Mill Park, Kingsway Park South East, Mimico NE, Old Mill South, The Queensway East, Royal York South East, Sunnylea
+Kingsway Park South West, Mimico NW, The Queensway West, Royal York South West, South of Bloor
+Islington Avenue
+Cloverdale, Islington, Martin Grove, Princess Gardens, West Deane Park
+Bloordale Gardens, Eringate, Markland Wood, Old Burnhamthorpe
+Humber Summit
+Emery, Humberlea
+Weston
+Westmount
+Kingsview Village, Martin Grove Gardens, Richview Gardens, St. Phillips
+Albion Gardens, Beaumond Heights, Humbergate, Jamestown, Mount Olive, Silverstone, South Steeles, Thistletown
+Northwest
+Out[43]:
+Neighborhood	Neighborhood Latitude	Neighborhood Longitude	Venue	Venue Latitude	Venue Longitude	Venue Category
+0	Rouge, Malvern	43.806686	-79.194353	Wendy's	43.807448	-79.199056	Fast Food Restaurant
+1	Highland Creek, Rouge Hill, Port Union	43.784535	-79.160497	Royal Canadian Legion	43.782533	-79.163085	Bar
+2	Highland Creek, Rouge Hill, Port Union	43.784535	-79.160497	Scarborough Historical Society	43.788755	-79.162438	History Museum
+3	Guildwood, Morningside, West Hill	43.763573	-79.188711	Swiss Chalet Rotisserie & Grill	43.767697	-79.189914	Pizza Place
+4	Guildwood, Morningside, West Hill	43.763573	-79.188711	G & G Electronics	43.765309	-79.191537	Electronics Store
+In [42]:
+print('{} venues were returned by Foursquare.'.format(toronto_venues.shape[0]))
+toronto_venues.head()
+2248 venues were returned by Foursquare.
+Out[42]:
+Neighborhood	Neighborhood Latitude	Neighborhood Longitude	Venue	Venue Latitude	Venue Longitude	Venue Category
+0	Rouge, Malvern	43.806686	-79.194353	Wendy's	43.807448	-79.199056	Fast Food Restaurant
+1	Highland Creek, Rouge Hill, Port Union	43.784535	-79.160497	Royal Canadian Legion	43.782533	-79.163085	Bar
+2	Highland Creek, Rouge Hill, Port Union	43.784535	-79.160497	Scarborough Historical Society	43.788755	-79.162438	History Museum
+3	Guildwood, Morningside, West Hill	43.763573	-79.188711	Swiss Chalet Rotisserie & Grill	43.767697	-79.189914	Pizza Place
+4	Guildwood, Morningside, West Hill	43.763573	-79.188711	G & G Electronics	43.765309	-79.191537	Electronics Store
+In [46]:
+#Number of venues per neighborhood
+toronto_venues.groupby('Neighborhood').count()
+Out[46]:
+Neighborhood Latitude	Neighborhood Longitude	Venue	Venue Latitude	Venue Longitude	Venue Category
+Neighborhood						
+Adelaide, King, Richmond	100	100	100	100	100	100
+Agincourt	5	5	5	5	5	5
+Agincourt North, L'Amoreaux East, Milliken, Steeles East	2	2	2	2	2	2
+Albion Gardens, Beaumond Heights, Humbergate, Jamestown, Mount Olive, Silverstone, South Steeles, Thistletown	10	10	10	10	10	10
+Alderwood, Long Branch	9	9	9	9	9	9
+Bathurst Manor, Downsview North, Wilson Heights	19	19	19	19	19	19
+Bayview Village	4	4	4	4	4	4
+Bedford Park, Lawrence Manor East	23	23	23	23	23	23
+Berczy Park	56	56	56	56	56	56
+Birch Cliff, Cliffside West	4	4	4	4	4	4
+Bloordale Gardens, Eringate, Markland Wood, Old Burnhamthorpe	9	9	9	9	9	9
+Brockton, Exhibition Place, Parkdale Village	22	22	22	22	22	22
+Business Reply Mail Processing Centre 969 Eastern	17	17	17	17	17	17
+CFB Toronto, Downsview East	2	2	2	2	2	2
+CN Tower, Bathurst Quay, Island airport, Harbourfront West, King and Spadina, Railway Lands, South Niagara	16	16	16	16	16	16
+Cabbagetown, St. James Town	46	46	46	46	46	46
+Caledonia-Fairbanks	5	5	5	5	5	5
+Canada Post Gateway Processing Centre	11	11	11	11	11	11
+Cedarbrae	7	7	7	7	7	7
+Central Bay Street	84	84	84	84	84	84
+Chinatown, Grange Park, Kensington Market	100	100	100	100	100	100
+Christie	15	15	15	15	15	15
+Church and Wellesley	84	84	84	84	84	84
+Clairlea, Golden Mile, Oakridge	9	9	9	9	9	9
+Clarks Corners, Sullivan, Tam O'Shanter	12	12	12	12	12	12
+Cliffcrest, Cliffside, Scarborough Village West	2	2	2	2	2	2
+Cloverdale, Islington, Martin Grove, Princess Gardens, West Deane Park	2	2	2	2	2	2
+Commerce Court, Victoria Hotel	100	100	100	100	100	100
+Davisville	34	34	34	34	34	34
+Davisville North	8	8	8	8	8	8
+Deer Park, Forest Hill SE, Rathnelly, South Hill, Summerhill West	15	15	15	15	15	15
+Del Ray, Keelesdale, Mount Dennis, Silverthorn	4	4	4	4	4	4
+Design Exchange, Toronto Dominion Centre	100	100	100	100	100	100
+Don Mills North	5	5	5	5	5	5
+Dorset Park, Scarborough Town Centre, Wexford Heights	7	7	7	7	7	7
+Dovercourt Village, Dufferin	14	14	14	14	14	14
+Downsview Central	4	4	4	4	4	4
+Downsview Northwest	4	4	4	4	4	4
+Downsview West	4	4	4	4	4	4
+Downsview, North Park, Upwood Park	3	3	3	3	3	3
+East Birchmount Park, Ionview, Kennedy Park	6	6	6	6	6	6
+East Toronto	5	5	5	5	5	5
+Emery, Humberlea	1	1	1	1	1	1
+Fairview, Henry Farm, Oriole	64	64	64	64	64	64
+First Canadian Place, Underground city	100	100	100	100	100	100
+Flemingdon Park, Don Mills South	20	20	20	20	20	20
+Forest Hill North, Forest Hill West	5	5	5	5	5	5
+Glencairn	5	5	5	5	5	5
+Guildwood, Morningside, West Hill	7	7	7	7	7	7
+Harbord, University of Toronto	34	34	34	34	34	34
+Harbourfront East, Toronto Islands, Union Station	100	100	100	100	100	100
+Harbourfront, Regent Park	50	50	50	50	50	50
+High Park, The Junction South	23	23	23	23	23	23
+Highland Creek, Rouge Hill, Port Union	2	2	2	2	2	2
+Hillcrest Village	5	5	5	5	5	5
+Humber Bay Shores, Mimico South, New Toronto	15	15	15	15	15	15
+Humber Bay, King's Mill Park, Kingsway Park South East, Mimico NE, Old Mill South, The Queensway East, Royal York South East, Sunnylea	3	3	3	3	3	3
+Humber Summit	2	2	2	2	2	2
+Humewood-Cedarvale	4	4	4	4	4	4
+Kingsview Village, Martin Grove Gardens, Richview Gardens, St. Phillips	3	3	3	3	3	3
+Kingsway Park South West, Mimico NW, The Queensway West, Royal York South West, South of Bloor	14	14	14	14	14	14
+L'Amoreaux West	13	13	13	13	13	13
+Lawrence Heights, Lawrence Manor	13	13	13	13	13	13
+Lawrence Park	4	4	4	4	4	4
+Leaside	34	34	34	34	34	34
+Little Portugal, Trinity	65	65	65	65	65	65
+Maryvale, Wexford	5	5	5	5	5	5
+Moore Park, Summerhill East	2	2	2	2	2	2
+North Toronto West	20	20	20	20	20	20
+Northwest	2	2	2	2	2	2
+Northwood Park, York University	6	6	6	6	6	6
+Parkdale, Roncesvalles	15	15	15	15	15	15
+Parkwoods	3	3	3	3	3	3
+Queen's Park	38	38	38	38	38	38
+Rosedale	5	5	5	5	5	5
+Roselawn	1	1	1	1	1	1
+Rouge, Malvern	1	1	1	1	1	1
+Runnymede, Swansea	37	37	37	37	37	37
+Ryerson, Garden District	100	100	100	100	100	100
+Scarborough Village	2	2	2	2	2	2
+Silver Hills, York Mills	1	1	1	1	1	1
+St. James Town	100	100	100	100	100	100
+Stn A PO Boxes 25 The Esplanade	96	96	96	96	96	96
+Studio District	41	41	41	41	41	41
+The Annex, North Midtown, Yorkville	24	24	24	24	24	24
+The Beaches	4	4	4	4	4	4
+The Beaches West, India Bazaar	21	21	21	21	21	21
+The Danforth West, Riverdale	42	42	42	42	42	42
+The Junction North, Runnymede	4	4	4	4	4	4
+The Kingsway, Montgomery Road, Old Mill North	2	2	2	2	2	2
+Thorncliffe Park	17	17	17	17	17	17
+Victoria Village	5	5	5	5	5	5
+Westmount	8	8	8	8	8	8
+Weston	1	1	1	1	1	1
+Willowdale South	36	36	36	36	36	36
+Willowdale West	6	6	6	6	6	6
+Woburn	4	4	4	4	4	4
+Woodbine Gardens, Parkview Hill	12	12	12	12	12	12
+Woodbine Heights	9	9	9	9	9	9
+York Mills West	4	4	4	4	4	4
+In [47]:
+print('There are {} uniques categories.'.format(len(toronto_venues['Venue Category'].unique())))
+There are 272 uniques categories.
+In [48]:
+# one hot encoding
+toronto_onehot = pd.get_dummies(toronto_venues[['Venue Category']], prefix="", prefix_sep="")
+
+# add neighborhood column back to dataframe
+toronto_onehot['Neighborhood'] = toronto_venues['Neighborhood'] 
+
+# move neighborhood column to the first column
+fixed_columns = [toronto_onehot.columns[-1]] + list(toronto_onehot.columns[:-1])
+manhattan_onehot = toronto_onehot[fixed_columns]
+
+toronto_onehot.head()
+Out[48]:
+Accessories Store	Afghan Restaurant	Airport	Airport Food Court	Airport Gate	Airport Lounge	Airport Service	Airport Terminal	American Restaurant	Antique Shop	Aquarium	Art Gallery	Art Museum	Arts & Crafts Store	Asian Restaurant	Athletics & Sports	Auto Garage	Auto Workshop	BBQ Joint	Baby Store	Bagel Shop	Bakery	Bank	Bar	Baseball Field	Baseball Stadium	Basketball Court	Basketball Stadium	Beach	Beer Bar	Beer Store	Bike Shop	Bistro	Boat or Ferry	Bookstore	Boutique	Brazilian Restaurant	Breakfast Spot	Brewery	Bridal Shop	Bubble Tea Shop	Building	Burger Joint	Burrito Place	Bus Line	Bus Station	Business Service	Butcher	Cafeteria	Café	Cajun / Creole Restaurant	Camera Store	Candy Store	Caribbean Restaurant	Cheese Shop	Chinese Restaurant	Chocolate Shop	Church	Climbing Gym	Clothing Store	Cocktail Bar	Coffee Shop	College Arts Building	College Auditorium	College Gym	College Rec Center	College Stadium	Colombian Restaurant	Comfort Food Restaurant	Comic Shop	Concert Hall	Construction & Landscaping	Convenience Store	Cosmetics Shop	Coworking Space	Creperie	Cuban Restaurant	Cupcake Shop	Curling Ice	Dance Studio	Deli / Bodega	Department Store	Dessert Shop	Dim Sum Restaurant	Diner	Discount Store	Dive Bar	Dog Run	Doner Restaurant	Donut Shop	Drugstore	Dumpling Restaurant	Eastern European Restaurant	Electronics Store	Empanada Restaurant	Ethiopian Restaurant	Event Space	Falafel Restaurant	Farmers Market	Fast Food Restaurant	Field	Filipino Restaurant	Fish & Chips Shop	Fish Market	Flea Market	Flower Shop	Food	Food & Drink Shop	Food Court	Food Truck	Fountain	French Restaurant	Fried Chicken Joint	Frozen Yogurt Shop	Fruit & Vegetable Store	Furniture / Home Store	Gaming Cafe	Garden	Garden Center	Gastropub	Gay Bar	General Entertainment	General Travel	German Restaurant	Gift Shop	Gluten-free Restaurant	Golf Course	Gourmet Shop	Greek Restaurant	Grocery Store	Gym	Gym / Fitness Center	Hakka Restaurant	Harbor / Marina	Hardware Store	Health & Beauty Service	Health Food Store	Historic Site	History Museum	Hobby Shop	Hockey Arena	Home Service	Hookah Bar	Hospital	Hostel	Hotel	Hotel Bar	Hotpot Restaurant	Ice Cream Shop	Indian Restaurant	Indie Movie Theater	Indonesian Restaurant	Intersection	Irish Pub	Italian Restaurant	Japanese Restaurant	Jazz Club	Jewelry Store	Jewish Restaurant	Juice Bar	Korean Restaurant	Lake	Latin American Restaurant	Light Rail Station	Lingerie Store	Liquor Store	Lounge	Luggage Store	Mac & Cheese Joint	Malay Restaurant	Market	Martial Arts Dojo	Massage Studio	Medical Center	Mediterranean Restaurant	Men's Store	Mexican Restaurant	Middle Eastern Restaurant	Miscellaneous Shop	Mobile Phone Shop	Modern European Restaurant	Molecular Gastronomy Restaurant	Monument / Landmark	Motel	Movie Theater	Museum	Music Store	Music Venue	Nail Salon	Neighborhood	New American Restaurant	Nightclub	Noodle House	Office	Opera House	Optical Shop	Organic Grocery	Other Great Outdoors	Park	Performing Arts Venue	Persian Restaurant	Pet Store	Pharmacy	Pizza Place	Plane	Playground	Plaza	Poke Place	Polish Restaurant	Pool	Portuguese Restaurant	Poutine Place	Pub	Ramen Restaurant	Record Shop	Rental Car Location	Restaurant	River	Roof Deck	Sake Bar	Salad Place	Salon / Barbershop	Sandwich Place	Scenic Lookout	Sculpture Garden	Seafood Restaurant	Shoe Store	Shopping Mall	Skate Park	Skating Rink	Smoke Shop	Smoothie Shop	Snack Place	Soccer Field	Social Club	Soup Place	Southern / Soul Food Restaurant	Spa	Speakeasy	Sporting Goods Shop	Sports Bar	Stadium	Stationery Store	Steakhouse	Strip Club	Supermarket	Supplement Shop	Sushi Restaurant	Swim School	Taco Place	Tailor Shop	Taiwanese Restaurant	Tanning Salon	Tapas Restaurant	Tea Room	Tennis Court	Thai Restaurant	Theater	Theme Restaurant	Thrift / Vintage Store	Toy / Game Store	Trail	Train Station	Vegetarian / Vegan Restaurant	Video Game Store	Video Store	Vietnamese Restaurant	Warehouse Store	Wine Bar	Wings Joint	Women's Store	Yoga Studio
+0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	Rouge, Malvern	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	Highland Creek, Rouge Hill, Port Union	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+2	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	Highland Creek, Rouge Hill, Port Union	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+3	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	Guildwood, Morningside, West Hill	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+4	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	Guildwood, Morningside, West Hill	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+In [50]:
+toronto_grouped = toronto_onehot.groupby('Neighborhood').mean().reset_index()
+toronto_grouped.head()
+Out[50]:
+Neighborhood	Accessories Store	Afghan Restaurant	Airport	Airport Food Court	Airport Gate	Airport Lounge	Airport Service	Airport Terminal	American Restaurant	Antique Shop	Aquarium	Art Gallery	Art Museum	Arts & Crafts Store	Asian Restaurant	Athletics & Sports	Auto Garage	Auto Workshop	BBQ Joint	Baby Store	Bagel Shop	Bakery	Bank	Bar	Baseball Field	Baseball Stadium	Basketball Court	Basketball Stadium	Beach	Beer Bar	Beer Store	Bike Shop	Bistro	Boat or Ferry	Bookstore	Boutique	Brazilian Restaurant	Breakfast Spot	Brewery	Bridal Shop	Bubble Tea Shop	Building	Burger Joint	Burrito Place	Bus Line	Bus Station	Business Service	Butcher	Cafeteria	Café	Cajun / Creole Restaurant	Camera Store	Candy Store	Caribbean Restaurant	Cheese Shop	Chinese Restaurant	Chocolate Shop	Church	Climbing Gym	Clothing Store	Cocktail Bar	Coffee Shop	College Arts Building	College Auditorium	College Gym	College Rec Center	College Stadium	Colombian Restaurant	Comfort Food Restaurant	Comic Shop	Concert Hall	Construction & Landscaping	Convenience Store	Cosmetics Shop	Coworking Space	Creperie	Cuban Restaurant	Cupcake Shop	Curling Ice	Dance Studio	Deli / Bodega	Department Store	Dessert Shop	Dim Sum Restaurant	Diner	Discount Store	Dive Bar	Dog Run	Doner Restaurant	Donut Shop	Drugstore	Dumpling Restaurant	Eastern European Restaurant	Electronics Store	Empanada Restaurant	Ethiopian Restaurant	Event Space	Falafel Restaurant	Farmers Market	Fast Food Restaurant	Field	Filipino Restaurant	Fish & Chips Shop	Fish Market	Flea Market	Flower Shop	Food	Food & Drink Shop	Food Court	Food Truck	Fountain	French Restaurant	Fried Chicken Joint	Frozen Yogurt Shop	Fruit & Vegetable Store	Furniture / Home Store	Gaming Cafe	Garden	Garden Center	Gastropub	Gay Bar	General Entertainment	General Travel	German Restaurant	Gift Shop	Gluten-free Restaurant	Golf Course	Gourmet Shop	Greek Restaurant	Grocery Store	Gym	Gym / Fitness Center	Hakka Restaurant	Harbor / Marina	Hardware Store	Health & Beauty Service	Health Food Store	Historic Site	History Museum	Hobby Shop	Hockey Arena	Home Service	Hookah Bar	Hospital	Hostel	Hotel	Hotel Bar	Hotpot Restaurant	Ice Cream Shop	Indian Restaurant	Indie Movie Theater	Indonesian Restaurant	Intersection	Irish Pub	Italian Restaurant	Japanese Restaurant	Jazz Club	Jewelry Store	Jewish Restaurant	Juice Bar	Korean Restaurant	Lake	Latin American Restaurant	Light Rail Station	Lingerie Store	Liquor Store	Lounge	Luggage Store	Mac & Cheese Joint	Malay Restaurant	Market	Martial Arts Dojo	Massage Studio	Medical Center	Mediterranean Restaurant	Men's Store	Mexican Restaurant	Middle Eastern Restaurant	Miscellaneous Shop	Mobile Phone Shop	Modern European Restaurant	Molecular Gastronomy Restaurant	Monument / Landmark	Motel	Movie Theater	Museum	Music Store	Music Venue	Nail Salon	New American Restaurant	Nightclub	Noodle House	Office	Opera House	Optical Shop	Organic Grocery	Other Great Outdoors	Park	Performing Arts Venue	Persian Restaurant	Pet Store	Pharmacy	Pizza Place	Plane	Playground	Plaza	Poke Place	Polish Restaurant	Pool	Portuguese Restaurant	Poutine Place	Pub	Ramen Restaurant	Record Shop	Rental Car Location	Restaurant	River	Roof Deck	Sake Bar	Salad Place	Salon / Barbershop	Sandwich Place	Scenic Lookout	Sculpture Garden	Seafood Restaurant	Shoe Store	Shopping Mall	Skate Park	Skating Rink	Smoke Shop	Smoothie Shop	Snack Place	Soccer Field	Social Club	Soup Place	Southern / Soul Food Restaurant	Spa	Speakeasy	Sporting Goods Shop	Sports Bar	Stadium	Stationery Store	Steakhouse	Strip Club	Supermarket	Supplement Shop	Sushi Restaurant	Swim School	Taco Place	Tailor Shop	Taiwanese Restaurant	Tanning Salon	Tapas Restaurant	Tea Room	Tennis Court	Thai Restaurant	Theater	Theme Restaurant	Thrift / Vintage Store	Toy / Game Store	Trail	Train Station	Vegetarian / Vegan Restaurant	Video Game Store	Video Store	Vietnamese Restaurant	Warehouse Store	Wine Bar	Wings Joint	Women's Store	Yoga Studio
+0	Adelaide, King, Richmond	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.03	0.0	0.0	0.01	0.01	0.0	0.03	0.000000	0.0	0.0	0.0	0.0	0.0	0.02	0.0	0.04	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.01	0.03	0.0	0.0	0.0	0.01	0.02	0.01	0.0	0.0	0.0	0.0	0.0	0.05	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.080000	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.02	0.0	0.0	0.02	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.02	0.0	0.0	0.01	0.0	0.0	0.01	0.0	0.0	0.01	0.0	0.030000	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.03	0.0	0.0	0.01	0.01	0.0	0.0	0.0	0.0	0.01	0.01	0.01	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.01	0.0	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.01	0.01	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.000000	0.020000	0.0	0.0	0.01	0.01	0.0	0.0	0.0	0.0	0.000000	0.0	0.01	0.0	0.03	0.0	0.0	0.0	0.01	0.01	0.000000	0.0	0.0	0.01	0.0	0.0	0.0	0.000000	0.01	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.0	0.0	0.04	0.0	0.0	0.0	0.02	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.04	0.01	0.0	0.0	0.0	0.0	0.0	0.01	0.0	0.0	0.0	0.0	0.01	0.0	0.01	0.0
+1	Agincourt	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.00	0.000000	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.20	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.2	0.0	0.0	0.0	0.00	0.0	0.000000	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.000000	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.20	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.000000	0.000000	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.000000	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.00	0.00	0.200000	0.0	0.0	0.00	0.0	0.0	0.0	0.200000	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0
+2	Agincourt North, L'Amoreaux East, Milliken, St...	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.00	0.000000	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.000000	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.000000	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.5	0.0	0.0	0.0	0.000000	0.000000	0.0	0.5	0.00	0.00	0.0	0.0	0.0	0.0	0.000000	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.00	0.00	0.000000	0.0	0.0	0.00	0.0	0.0	0.0	0.000000	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0
+3	Albion Gardens, Beaumond Heights, Humbergate, ...	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.00	0.000000	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.1	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.100000	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.1	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.1	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.2	0.000000	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.1	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.100000	0.100000	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.000000	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.00	0.00	0.100000	0.0	0.0	0.00	0.0	0.0	0.0	0.000000	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0
+4	Alderwood, Long Branch	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.00	0.111111	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.111111	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.0	0.00	0.0	0.111111	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.111111	0.222222	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.111111	0.0	0.00	0.0	0.00	0.0	0.0	0.0	0.00	0.00	0.111111	0.0	0.0	0.00	0.0	0.0	0.0	0.111111	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.0	0.00	0.00	0.0	0.0	0.0	0.0	0.0	0.00	0.0	0.0	0.0	0.0	0.00	0.0	0.00	0.0
+In [51]:
+num_top_venues = 5
+
+for hood in toronto_grouped['Neighborhood']:
+    print("----"+hood+"----")
+    temp = toronto_grouped[toronto_grouped['Neighborhood'] == hood].T.reset_index()
+    temp.columns = ['venue','freq']
+    temp = temp.iloc[1:]
+    temp['freq'] = temp['freq'].astype(float)
+    temp = temp.round({'freq': 2})
+    print(temp.sort_values('freq', ascending=False).reset_index(drop=True).head(num_top_venues))
+    print('\n')
+----Adelaide, King, Richmond----
+             venue  freq
+0      Coffee Shop  0.08
+1             Café  0.05
+2       Steakhouse  0.04
+3              Bar  0.04
+4  Thai Restaurant  0.04
+
+
+----Agincourt----
+                venue  freq
+0      Breakfast Spot   0.2
+1              Lounge   0.2
+2  Chinese Restaurant   0.2
+3        Skating Rink   0.2
+4      Sandwich Place   0.2
+
+
+----Agincourt North, L'Amoreaux East, Milliken, Steeles East----
+                venue  freq
+0          Playground   0.5
+1                Park   0.5
+2  Miscellaneous Shop   0.0
+3       Movie Theater   0.0
+4               Motel   0.0
+
+
+----Albion Gardens, Beaumond Heights, Humbergate, Jamestown, Mount Olive, Silverstone, South Steeles, Thistletown----
+                 venue  freq
+0        Grocery Store   0.2
+1           Beer Store   0.1
+2  Fried Chicken Joint   0.1
+3          Coffee Shop   0.1
+4       Sandwich Place   0.1
+
+
+----Alderwood, Long Branch----
+                venue  freq
+0         Pizza Place  0.22
+1            Pharmacy  0.11
+2                 Gym  0.11
+3  Athletics & Sports  0.11
+4         Coffee Shop  0.11
+
+
+----Bathurst Manor, Downsview North, Wilson Heights----
+                venue  freq
+0         Coffee Shop  0.11
+1    Sushi Restaurant  0.05
+2       Shopping Mall  0.05
+3         Supermarket  0.05
+4  Frozen Yogurt Shop  0.05
+
+
+----Bayview Village----
+                 venue  freq
+0  Japanese Restaurant  0.25
+1   Chinese Restaurant  0.25
+2                 Bank  0.25
+3                 Café  0.25
+4          Music Venue  0.00
+
+
+----Bedford Park, Lawrence Manor East----
+                     venue  freq
+0              Coffee Shop  0.09
+1       Italian Restaurant  0.09
+2               Hobby Shop  0.04
+3          Thai Restaurant  0.04
+4  Comfort Food Restaurant  0.04
+
+
+----Berczy Park----
+          venue  freq
+0   Coffee Shop  0.09
+1  Cocktail Bar  0.05
+2      Beer Bar  0.04
+3    Steakhouse  0.04
+4   Cheese Shop  0.04
+
+
+----Birch Cliff, Cliffside West----
+                   venue  freq
+0  General Entertainment  0.25
+1        College Stadium  0.25
+2                   Café  0.25
+3           Skating Rink  0.25
+4      Accessories Store  0.00
+
+
+----Bloordale Gardens, Eringate, Markland Wood, Old Burnhamthorpe----
+               venue  freq
+0       Liquor Store  0.11
+1  Convenience Store  0.11
+2        Pizza Place  0.11
+3           Pharmacy  0.11
+4          Pet Store  0.11
+
+
+----Brockton, Exhibition Place, Parkdale Village----
+            venue  freq
+0  Breakfast Spot  0.09
+1            Café  0.09
+2     Coffee Shop  0.09
+3    Intersection  0.05
+4         Stadium  0.05
+
+
+----Business Reply Mail Processing Centre 969 Eastern----
+                  venue  freq
+0    Light Rail Station  0.12
+1        Farmers Market  0.06
+2  Gym / Fitness Center  0.06
+3         Auto Workshop  0.06
+4            Restaurant  0.06
+
+
+----CFB Toronto, Downsview East----
+                venue  freq
+0             Airport   0.5
+1                Park   0.5
+2   Accessories Store   0.0
+3  Miscellaneous Shop   0.0
+4       Movie Theater   0.0
+
+
+----CN Tower, Bathurst Quay, Island airport, Harbourfront West, King and Spadina, Railway Lands, South Niagara----
+              venue  freq
+0   Airport Service  0.19
+1    Airport Lounge  0.12
+2  Airport Terminal  0.12
+3       Coffee Shop  0.06
+4             Plane  0.06
+
+
+----Cabbagetown, St. James Town----
+         venue  freq
+0  Coffee Shop  0.09
+1       Bakery  0.04
+2         Park  0.04
+3         Café  0.04
+4  Pizza Place  0.04
+
+
+----Caledonia-Fairbanks----
+                  venue  freq
+0                  Park   0.4
+1                Market   0.2
+2         Women's Store   0.2
+3  Fast Food Restaurant   0.2
+4    Miscellaneous Shop   0.0
+
+
+----Canada Post Gateway Processing Centre----
+                      venue  freq
+0               Coffee Shop  0.18
+1                     Hotel  0.18
+2  Mediterranean Restaurant  0.09
+3      Gym / Fitness Center  0.09
+4       Fried Chicken Joint  0.09
+
+
+----Cedarbrae----
+                  venue  freq
+0                  Bank  0.14
+1  Caribbean Restaurant  0.14
+2       Thai Restaurant  0.14
+3    Athletics & Sports  0.14
+4      Hakka Restaurant  0.14
+
+
+----Central Bay Street----
+                venue  freq
+0         Coffee Shop  0.14
+1  Italian Restaurant  0.05
+2      Ice Cream Shop  0.05
+3        Burger Joint  0.04
+4                Café  0.04
+
+
+----Chinatown, Grange Park, Kensington Market----
+                           venue  freq
+0                           Café  0.07
+1  Vegetarian / Vegan Restaurant  0.06
+2             Chinese Restaurant  0.05
+3             Mexican Restaurant  0.04
+4            Dumpling Restaurant  0.04
+
+
+----Christie----
+               venue  freq
+0      Grocery Store  0.20
+1               Café  0.20
+2               Park  0.13
+3  Convenience Store  0.07
+4          Nightclub  0.07
+
+
+----Church and Wellesley----
+                 venue  freq
+0          Coffee Shop  0.07
+1  Japanese Restaurant  0.06
+2     Sushi Restaurant  0.05
+3           Restaurant  0.04
+4              Gay Bar  0.04
+
+
+----Clairlea, Golden Mile, Oakridge----
+                  venue  freq
+0              Bus Line  0.22
+1                Bakery  0.22
+2  Fast Food Restaurant  0.11
+3          Soccer Field  0.11
+4                  Park  0.11
+
+
+----Clarks Corners, Sullivan, Tam O'Shanter----
+                  venue  freq
+0           Pizza Place  0.17
+1              Pharmacy  0.08
+2          Noodle House  0.08
+3  Fast Food Restaurant  0.08
+4   Fried Chicken Joint  0.08
+
+
+----Cliffcrest, Cliffside, Scarborough Village West----
+                 venue  freq
+0  American Restaurant   0.5
+1                Motel   0.5
+2   Miscellaneous Shop   0.0
+3        Movie Theater   0.0
+4  Monument / Landmark   0.0
+
+
+----Cloverdale, Islington, Martin Grove, Princess Gardens, West Deane Park----
+                 venue  freq
+0  Filipino Restaurant   0.5
+1                 Bank   0.5
+2    Mobile Phone Shop   0.0
+3        Movie Theater   0.0
+4                Motel   0.0
+
+
+----Commerce Court, Victoria Hotel----
+                 venue  freq
+0          Coffee Shop  0.09
+1                Hotel  0.06
+2                 Café  0.06
+3  American Restaurant  0.04
+4           Restaurant  0.04
+
+
+----Davisville----
+             venue  freq
+0      Pizza Place  0.09
+1     Dessert Shop  0.09
+2   Sandwich Place  0.09
+3  Thai Restaurant  0.06
+4      Coffee Shop  0.06
+
+
+----Davisville North----
+               venue  freq
+0       Dance Studio  0.12
+1     Clothing Store  0.12
+2     Breakfast Spot  0.12
+3               Park  0.12
+4  Food & Drink Shop  0.12
+
+
+----Deer Park, Forest Hill SE, Rathnelly, South Hill, Summerhill West----
+          venue  freq
+0           Pub  0.13
+1   Coffee Shop  0.13
+2   Pizza Place  0.07
+3    Sports Bar  0.07
+4  Liquor Store  0.07
+
+
+----Del Ray, Keelesdale, Mount Dennis, Silverthorn----
+                        venue  freq
+0              Sandwich Place  0.25
+1                  Restaurant  0.25
+2                         Bar  0.25
+3                Skating Rink  0.25
+4  Modern European Restaurant  0.00
+
+
+----Design Exchange, Toronto Dominion Centre----
+         venue  freq
+0  Coffee Shop  0.12
+1         Café  0.08
+2        Hotel  0.06
+3   Restaurant  0.05
+4          Gym  0.03
+
+
+----Don Mills North----
+                  venue  freq
+0   Japanese Restaurant   0.2
+1                  Café   0.2
+2  Gym / Fitness Center   0.2
+3      Basketball Court   0.2
+4  Caribbean Restaurant   0.2
+
+
+----Dorset Park, Scarborough Town Centre, Wexford Heights----
+                       venue  freq
+0          Indian Restaurant  0.29
+1                Gaming Cafe  0.14
+2  Latin American Restaurant  0.14
+3                  Pet Store  0.14
+4         Chinese Restaurant  0.14
+
+
+----Dovercourt Village, Dufferin----
+                       venue  freq
+0                     Bakery  0.14
+1                   Pharmacy  0.14
+2                Supermarket  0.14
+3  Middle Eastern Restaurant  0.07
+4                        Bar  0.07
+
+
+----Downsview Central----
+               venue  freq
+0       Home Service  0.25
+1  Korean Restaurant  0.25
+2     Baseball Field  0.25
+3   Business Service  0.25
+4  Accessories Store  0.00
+
+
+----Downsview Northwest----
+                  venue  freq
+0    Athletics & Sports  0.25
+1          Liquor Store  0.25
+2  Gym / Fitness Center  0.25
+3         Grocery Store  0.25
+4     Accessories Store  0.00
+
+
+----Downsview West----
+               venue  freq
+0               Bank  0.25
+1               Park  0.25
+2      Grocery Store  0.25
+3      Shopping Mall  0.25
+4  Accessories Store  0.00
+
+
+----Downsview, North Park, Upwood Park----
+                        venue  freq
+0  Construction & Landscaping  0.33
+1                      Bakery  0.33
+2                        Park  0.33
+3           Accessories Store  0.00
+4           Mobile Phone Shop  0.00
+
+
+----East Birchmount Park, Ionview, Kennedy Park----
+                venue  freq
+0          Hobby Shop  0.17
+1         Coffee Shop  0.17
+2  Chinese Restaurant  0.17
+3    Department Store  0.17
+4      Discount Store  0.17
+
+
+----East Toronto----
+               venue  freq
+0               Park   0.4
+1        Pizza Place   0.2
+2  Convenience Store   0.2
+3        Coffee Shop   0.2
+4  Mobile Phone Shop   0.0
+
+
+----Emery, Humberlea----
+               venue  freq
+0     Baseball Field   1.0
+1  Accessories Store   0.0
+2  Mobile Phone Shop   0.0
+3      Movie Theater   0.0
+4              Motel   0.0
+
+
+----Fairview, Henry Farm, Oriole----
+                  venue  freq
+0        Clothing Store  0.16
+1  Fast Food Restaurant  0.08
+2           Coffee Shop  0.08
+3         Women's Store  0.05
+4      Asian Restaurant  0.03
+
+
+----First Canadian Place, Underground city----
+         venue  freq
+0  Coffee Shop  0.09
+1         Café  0.07
+2   Restaurant  0.04
+3   Steakhouse  0.04
+4        Hotel  0.04
+
+
+----Flemingdon Park, Don Mills South----
+                   venue  freq
+0             Beer Store  0.10
+1            Coffee Shop  0.10
+2                    Gym  0.10
+3  General Entertainment  0.05
+4       Asian Restaurant  0.05
+
+
+----Forest Hill North, Forest Hill West----
+              venue  freq
+0          Bus Line   0.2
+1     Jewelry Store   0.2
+2              Park   0.2
+3  Sushi Restaurant   0.2
+4             Trail   0.2
+
+
+----Glencairn----
+                 venue  freq
+0  Japanese Restaurant   0.2
+1     Sushi Restaurant   0.2
+2          Pizza Place   0.2
+3     Asian Restaurant   0.2
+4                  Pub   0.2
+
+
+----Guildwood, Morningside, West Hill----
+                 venue  freq
+0          Pizza Place  0.14
+1  Rental Car Location  0.14
+2       Breakfast Spot  0.14
+3   Mexican Restaurant  0.14
+4    Electronics Store  0.14
+
+
+----Harbord, University of Toronto----
+                 venue  freq
+0                 Café  0.12
+1           Restaurant  0.06
+2               Bakery  0.06
+3  Japanese Restaurant  0.06
+4            Bookstore  0.06
+
+
+----Harbourfront East, Toronto Islands, Union Station----
+                venue  freq
+0         Coffee Shop  0.11
+1               Hotel  0.05
+2            Aquarium  0.05
+3  Italian Restaurant  0.04
+4                Café  0.04
+
+
+----Harbourfront, Regent Park----
+         venue  freq
+0  Coffee Shop  0.18
+1          Pub  0.06
+2       Bakery  0.06
+3         Café  0.06
+4         Park  0.06
+
+
+----High Park, The Junction South----
+                       venue  freq
+0         Mexican Restaurant  0.09
+1                       Café  0.09
+2  Cajun / Creole Restaurant  0.04
+3        Arts & Crafts Store  0.04
+4       Fast Food Restaurant  0.04
+
+
+----Highland Creek, Rouge Hill, Port Union----
+               venue  freq
+0     History Museum   0.5
+1                Bar   0.5
+2  Accessories Store   0.0
+3  Mobile Phone Shop   0.0
+4      Movie Theater   0.0
+
+
+----Hillcrest Village----
+                      venue  freq
+0                   Dog Run   0.2
+1               Golf Course   0.2
+2      Fast Food Restaurant   0.2
+3  Mediterranean Restaurant   0.2
+4                      Pool   0.2
+
+
+----Humber Bay Shores, Mimico South, New Toronto----
+                 venue  freq
+0                 Café  0.13
+1             Pharmacy  0.07
+2  American Restaurant  0.07
+3               Bakery  0.07
+4  Fried Chicken Joint  0.07
+
+
+----Humber Bay, King's Mill Park, Kingsway Park South East, Mimico NE, Old Mill South, The Queensway East, Royal York South East, Sunnylea----
+                        venue  freq
+0                        Pool  0.33
+1            Business Service  0.33
+2              Baseball Field  0.33
+3           Accessories Store  0.00
+4  Modern European Restaurant  0.00
+
+
+----Humber Summit----
+                      venue  freq
+0               Pizza Place   0.5
+1       Empanada Restaurant   0.5
+2            Massage Studio   0.0
+3            Medical Center   0.0
+4  Mediterranean Restaurant   0.0
+
+
+----Humewood-Cedarvale----
+               venue  freq
+0              Trail  0.25
+1              Field  0.25
+2       Tennis Court  0.25
+3       Hockey Arena  0.25
+4  Accessories Store  0.00
+
+
+----Kingsview Village, Martin Grove Gardens, Richview Gardens, St. Phillips----
+                venue  freq
+0         Pizza Place  0.33
+1                Park  0.33
+2   Mobile Phone Shop  0.33
+3  Miscellaneous Shop  0.00
+4       Movie Theater  0.00
+
+
+----Kingsway Park South West, Mimico NW, The Queensway West, Royal York South West, South of Bloor----
+             venue  freq
+0     Burger Joint  0.07
+1              Gym  0.07
+2  Supplement Shop  0.07
+3           Bakery  0.07
+4   Sandwich Place  0.07
+
+
+----L'Amoreaux West----
+                  venue  freq
+0  Fast Food Restaurant  0.23
+1    Chinese Restaurant  0.15
+2           Pizza Place  0.08
+3                   Gym  0.08
+4        Breakfast Spot  0.08
+
+
+----Lawrence Heights, Lawrence Manor----
+                    venue  freq
+0          Clothing Store  0.23
+1  Furniture / Home Store  0.15
+2       Accessories Store  0.08
+3               Gift Shop  0.08
+4             Coffee Shop  0.08
+
+
+----Lawrence Park----
+                        venue  freq
+0  Construction & Landscaping  0.25
+1                 Swim School  0.25
+2                        Park  0.25
+3                    Bus Line  0.25
+4           Accessories Store  0.00
+
+
+----Leaside----
+                    venue  freq
+0             Coffee Shop  0.12
+1     Sporting Goods Shop  0.09
+2        Sushi Restaurant  0.06
+3            Burger Joint  0.06
+4  Furniture / Home Store  0.06
+
+
+----Little Portugal, Trinity----
+                     venue  freq
+0                      Bar  0.12
+1              Coffee Shop  0.06
+2         Asian Restaurant  0.05
+3              Pizza Place  0.03
+4  New American Restaurant  0.03
+
+
+----Maryvale, Wexford----
+            venue  freq
+0  Breakfast Spot   0.2
+1     Auto Garage   0.2
+2          Bakery   0.2
+3   Shopping Mall   0.2
+4  Sandwich Place   0.2
+
+
+----Moore Park, Summerhill East----
+               venue  freq
+0         Playground   0.5
+1         Restaurant   0.5
+2  Mobile Phone Shop   0.0
+3      Movie Theater   0.0
+4              Motel   0.0
+
+
+----North Toronto West----
+                 venue  freq
+0  Sporting Goods Shop  0.15
+1          Coffee Shop  0.10
+2       Clothing Store  0.10
+3          Yoga Studio  0.05
+4                 Park  0.05
+
+
+----Northwest----
+                 venue  freq
+0            Drugstore   0.5
+1  Rental Car Location   0.5
+2    Accessories Store   0.0
+3    Mobile Phone Shop   0.0
+4                Motel   0.0
+
+
+----Northwood Park, York University----
+                venue  freq
+0      Massage Studio  0.17
+1         Coffee Shop  0.17
+2  Falafel Restaurant  0.17
+3  Miscellaneous Shop  0.17
+4                 Bar  0.17
+
+
+----Parkdale, Roncesvalles----
+                venue  freq
+0      Breakfast Spot  0.13
+1           Gift Shop  0.13
+2         Coffee Shop  0.07
+3  Italian Restaurant  0.07
+4                Bank  0.07
+
+
+----Parkwoods----
+                  venue  freq
+0  Fast Food Restaurant  0.33
+1     Food & Drink Shop  0.33
+2                  Park  0.33
+3     Accessories Store  0.00
+4    Miscellaneous Shop  0.00
+
+
+----Queen's Park----
+                  venue  freq
+0           Coffee Shop  0.24
+1                   Gym  0.05
+2                  Park  0.05
+3                 Diner  0.05
+4  Fast Food Restaurant  0.03
+
+
+----Rosedale----
+                venue  freq
+0                Park   0.4
+1          Playground   0.2
+2            Building   0.2
+3               Trail   0.2
+4  Miscellaneous Shop   0.0
+
+
+----Roselawn----
+               venue  freq
+0             Garden   1.0
+1  Accessories Store   0.0
+2  Mobile Phone Shop   0.0
+3      Movie Theater   0.0
+4              Motel   0.0
+
+
+----Rouge, Malvern----
+                  venue  freq
+0  Fast Food Restaurant   1.0
+1     Accessories Store   0.0
+2    Miscellaneous Shop   0.0
+3         Movie Theater   0.0
+4                 Motel   0.0
+
+
+----Runnymede, Swansea----
+              venue  freq
+0              Café  0.08
+1       Coffee Shop  0.08
+2  Sushi Restaurant  0.05
+3       Pizza Place  0.05
+4         Bookstore  0.05
+
+
+----Ryerson, Garden District----
+                       venue  freq
+0                Coffee Shop  0.10
+1             Clothing Store  0.06
+2             Cosmetics Shop  0.04
+3                       Café  0.03
+4  Middle Eastern Restaurant  0.03
+
+
+----Scarborough Village----
+                     venue  freq
+0  Health & Beauty Service   0.5
+1               Playground   0.5
+2            Women's Store   0.0
+3                   Museum   0.0
+4        Martial Arts Dojo   0.0
+
+
+----Silver Hills, York Mills----
+               venue  freq
+0          Cafeteria   1.0
+1  Accessories Store   0.0
+2  Mobile Phone Shop   0.0
+3      Movie Theater   0.0
+4              Motel   0.0
+
+
+----St. James Town----
+                venue  freq
+0  Italian Restaurant  0.05
+1               Hotel  0.05
+2                Café  0.05
+3         Coffee Shop  0.05
+4          Restaurant  0.05
+
+
+----Stn A PO Boxes 25 The Esplanade----
+                venue  freq
+0         Coffee Shop  0.11
+1          Restaurant  0.04
+2                Café  0.04
+3            Beer Bar  0.03
+4  Seafood Restaurant  0.03
+
+
+----Studio District----
+                 venue  freq
+0                 Café  0.10
+1          Coffee Shop  0.07
+2   Italian Restaurant  0.05
+3               Bakery  0.05
+4  American Restaurant  0.05
+
+
+----The Annex, North Midtown, Yorkville----
+            venue  freq
+0     Coffee Shop  0.12
+1  Sandwich Place  0.12
+2            Café  0.12
+3     Pizza Place  0.08
+4  History Museum  0.04
+
+
+----The Beaches----
+                venue  freq
+0                 Pub  0.25
+1   Health Food Store  0.25
+2               Trail  0.25
+3  Miscellaneous Shop  0.00
+4       Movie Theater  0.00
+
+
+----The Beaches West, India Bazaar----
+                venue  freq
+0                Park  0.10
+1      Sandwich Place  0.10
+2         Pizza Place  0.05
+3  Italian Restaurant  0.05
+4       Burrito Place  0.05
+
+
+----The Danforth West, Riverdale----
+                    venue  freq
+0        Greek Restaurant  0.21
+1             Coffee Shop  0.10
+2      Italian Restaurant  0.07
+3  Furniture / Home Store  0.05
+4          Ice Cream Shop  0.05
+
+
+----The Junction North, Runnymede----
+                  venue  freq
+0           Pizza Place  0.25
+1              Bus Line  0.25
+2     Convenience Store  0.25
+3  Caribbean Restaurant  0.25
+4                Museum  0.00
+
+
+----The Kingsway, Montgomery Road, Old Mill North----
+               venue  freq
+0              River   0.5
+1               Park   0.5
+2  Accessories Store   0.0
+3  Mobile Phone Shop   0.0
+4      Movie Theater   0.0
+
+
+----Thorncliffe Park----
+               venue  freq
+0  Indian Restaurant  0.12
+1       Burger Joint  0.12
+2        Yoga Studio  0.06
+3               Park  0.06
+4        Coffee Shop  0.06
+
+
+----Victoria Village----
+                   venue  freq
+0            Coffee Shop   0.2
+1          Grocery Store   0.2
+2  Portuguese Restaurant   0.2
+3             Nail Salon   0.2
+4           Hockey Arena   0.2
+
+
+----Westmount----
+                venue  freq
+0         Pizza Place  0.25
+1        Intersection  0.12
+2      Sandwich Place  0.12
+3  Chinese Restaurant  0.12
+4         Coffee Shop  0.12
+
+
+----Weston----
+                venue  freq
+0                Park   1.0
+1   Accessories Store   0.0
+2  Miscellaneous Shop   0.0
+3       Movie Theater   0.0
+4               Motel   0.0
+
+
+----Willowdale South----
+              venue  freq
+0  Ramen Restaurant  0.08
+1       Coffee Shop  0.08
+2       Pizza Place  0.06
+3        Restaurant  0.06
+4              Café  0.06
+
+
+----Willowdale West----
+            venue  freq
+0     Pizza Place  0.17
+1   Grocery Store  0.17
+2         Butcher  0.17
+3     Coffee Shop  0.17
+4  Discount Store  0.17
+
+
+----Woburn----
+               venue  freq
+0        Coffee Shop  0.50
+1           Pharmacy  0.25
+2  Korean Restaurant  0.25
+3  Accessories Store  0.00
+4  Mobile Phone Shop  0.00
+
+
+----Woodbine Gardens, Parkview Hill----
+                  venue  freq
+0           Pizza Place  0.17
+1  Fast Food Restaurant  0.17
+2  Gym / Fitness Center  0.08
+3                  Bank  0.08
+4             Gastropub  0.08
+
+
+----Woodbine Heights----
+              venue  freq
+0          Pharmacy  0.11
+1  Asian Restaurant  0.11
+2    Cosmetics Shop  0.11
+3              Park  0.11
+4       Video Store  0.11
+
+
+----York Mills West----
+               venue  freq
+0  Convenience Store  0.25
+1               Bank  0.25
+2               Park  0.25
+3  Electronics Store  0.25
+4  Accessories Store  0.00
+
+
+In [52]:
+def return_most_common_venues(row, num_top_venues):
+    row_categories = row.iloc[1:]
+    row_categories_sorted = row_categories.sort_values(ascending=False)
+    
+    return row_categories_sorted.index.values[0:num_top_venues]
+In [83]:
+num_top_venues = 5
+
+indicators = ['st', 'nd', 'rd']
+
+# create columns according to number of top venues
+columns = ['Neighborhood']
+for ind in np.arange(num_top_venues):
+    try:
+        columns.append('{}{} Most Common Venue'.format(ind+1, indicators[ind]))
+    except:
+        columns.append('{}th Most Common Venue'.format(ind+1))
+
+# create a new dataframe
+neighborhoods_venues_sorted = pd.DataFrame(columns=columns)
+neighborhoods_venues_sorted['Neighborhood'] = toronto_grouped['Neighborhood']
+
+for ind in np.arange(toronto_grouped.shape[0]):
+    neighborhoods_venues_sorted.iloc[ind, 1:] = return_most_common_venues(toronto_grouped.iloc[ind, :], num_top_venues)
+
+neighborhoods_venues_sorted.head()
+Out[83]:
+Neighborhood	1st Most Common Venue	2nd Most Common Venue	3rd Most Common Venue	4th Most Common Venue	5th Most Common Venue
+0	Adelaide, King, Richmond	Coffee Shop	Café	Thai Restaurant	Bar	Steakhouse
+1	Agincourt	Lounge	Breakfast Spot	Sandwich Place	Skating Rink	Chinese Restaurant
+2	Agincourt North, L'Amoreaux East, Milliken, St...	Playground	Park	Yoga Studio	Dumpling Restaurant	Discount Store
+3	Albion Gardens, Beaumond Heights, Humbergate, ...	Grocery Store	Pizza Place	Fried Chicken Joint	Coffee Shop	Sandwich Place
+4	Alderwood, Long Branch	Pizza Place	Pharmacy	Gym	Sandwich Place	Skating Rink
+In [114]:
+# set number of clusters
+kclusters = 2
+
+toronto_grouped_clustering = toronto_grouped.drop('Neighborhood', 1)
+
+# run k-means clustering
+kmeans = KMeans(n_clusters=kclusters, random_state=0).fit(toronto_grouped_clustering)
+
+# check cluster labels generated for each row in the dataframe
+kmeans.labels_[0:10]
+Out[114]:
+array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0], dtype=int32)
+In [115]:
+# add clustering labels
+#neighborhoods_venues_sorted.insert(0, 'ClusterLabels', kmeans.labels_)
+
+toronto_merged = dfc
+
+# merge toronto_grouped with toronto_data to add latitude/longitude for each neighborhood
+toronto_merged = toronto_merged.join(neighborhoods_venues_sorted.set_index('Neighborhood'), on='Neighborhood')
+
+toronto_merged = toronto_merged.dropna()
+
+
+toronto_merged.head() # check the last columns!
+Out[115]:
+Postcode	Borough	Neighborhood	Latitude	Longitude	ClusterLabels	1st Most Common Venue	2nd Most Common Venue	3rd Most Common Venue	4th Most Common Venue	5th Most Common Venue
+0	M1B	Scarborough	Rouge, Malvern	43.806686	-79.194353	3.0	Fast Food Restaurant	Diner	Farmers Market	Falafel Restaurant	Event Space
+1	M1C	Scarborough	Highland Creek, Rouge Hill, Port Union	43.784535	-79.160497	0.0	History Museum	Bar	Yoga Studio	Eastern European Restaurant	Dog Run
+2	M1E	Scarborough	Guildwood, Morningside, West Hill	43.763573	-79.188711	0.0	Intersection	Pizza Place	Breakfast Spot	Electronics Store	Medical Center
+3	M1G	Scarborough	Woburn	43.770992	-79.216917	0.0	Coffee Shop	Pharmacy	Korean Restaurant	Dive Bar	Dog Run
+4	M1H	Scarborough	Cedarbrae	43.773136	-79.239476	0.0	Hakka Restaurant	Bakery	Caribbean Restaurant	Athletics & Sports	Bank
+In [116]:
+# create map
+map_clusters = folium.Map(location=[latitude, longitude], zoom_start=11)
+
+# set color scheme for the clusters
+x = np.arange(kclusters)
+ys = [i + x + (i*x)**2 for i in range(kclusters)]
+colors_array = cm.rainbow(np.linspace(0, 1, len(ys)))
+rainbow = [colors.rgb2hex(i) for i in colors_array]
+
+# add markers to the map
+markers_colors = []
+for lat, lon, poi, cluster in zip(toronto_merged['Latitude'], toronto_merged['Longitude'], toronto_merged['Neighborhood'], toronto_merged['ClusterLabels']):
+    label = folium.Popup(str(poi) + ' Cluster ' + str(cluster), parse_html=True)
+    folium.CircleMarker(
+        [lat, lon],
+        radius=5,
+        popup=label,
+        color='blue',
+        fill=True,
+        fill_color='red',
+        fill_opacity=0.7).add_to(map_clusters)
+       
+map_clusters
+Out[116]:
+In [120]:
+toronto_merged.loc[toronto_merged['ClusterLabels'] ==1, toronto_merged.columns[[1] + list(range(5, toronto_merged.shape[1]))]]
+Out[120]:
+Borough	ClusterLabels	1st Most Common Venue	2nd Most Common Venue	3rd Most Common Venue	4th Most Common Venue	5th Most Common Venue
+14	Scarborough	1.0	Playground	Park	Yoga Studio	Dumpling Restaurant	Discount Store
+25	North York	1.0	Fast Food Restaurant	Park	Food & Drink Shop	Dumpling Restaurant	Discount Store
+30	North York	1.0	Airport	Park	Yoga Studio	Eastern European Restaurant	Dive Bar
+40	East York	1.0	Park	Pizza Place	Coffee Shop	Convenience Store	Dumpling Restaurant
+44	Central Toronto	1.0	Park	Construction & Landscaping	Swim School	Bus Line	Yoga Studio
+50	Downtown Toronto	1.0	Park	Building	Playground	Trail	Dumpling Restaurant
+74	York	1.0	Park	Fast Food Restaurant	Women's Store	Market	Dumpling Restaurant
+79	North York	1.0	Construction & Landscaping	Park	Bakery	Yoga Studio	Eastern European Restaurant
+90	Etobicoke	1.0	Park	River	Yoga Studio	Drugstore	Discount Store
+98	York	1.0	Park	Yoga Studio	Eastern European Restaurant	Dive Bar	Dog Run
+100	Etobicoke	1.0	Pizza Place	Park	Mobile Phone Shop	Dumpling Restaurant	Dive Bar
+In [ ]:
+
+In [ ]:
